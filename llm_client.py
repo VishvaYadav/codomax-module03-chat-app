@@ -12,6 +12,7 @@ Covers the Module 03 concepts:
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass, asdict
 
@@ -21,10 +22,9 @@ from pydantic import BaseModel
 
 # Free-tier models (Google renames models often; the "-latest" aliases follow the newest Flash).
 MODELS = [
+    "gemini-3.8-flash",
     "gemini-flash-latest",
     "gemini-flash-lite-latest",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
 ]
 
 # Paid-tier prices in USD per 1M tokens, used ONLY to show what the chat *would* cost.
@@ -171,9 +171,13 @@ class GeminiChat:
             if "generateContent" in actions and name.startswith("gemini") and not any(s in name for s in skip):
                 names.add(name)
 
-        def rank(n):
+        def version(n):  # "gemini-3.8-flash" -> 3.8 ; aliases like "gemini-flash-latest" -> 0
+            m = re.match(r"gemini-(\d+(?:\.\d+)?)", n)
+            return float(m.group(1)) if m else 0.0
+
+        def rank(n):  # stable Flash first, newest version first, then Flash-Lite, then the rest
             tier = 0 if ("flash" in n and "lite" not in n) else 1 if "flash-lite" in n else 2
-            return (tier, "preview" in n or "exp" in n, "latest" not in n, n)
+            return (tier, "preview" in n or "exp" in n, -version(n), n)
         return sorted(names, key=rank)
 
     @staticmethod
