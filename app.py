@@ -101,6 +101,8 @@ with st.sidebar:
                                help="Upper limit on reply length. Lower = cheaper, but replies may be cut off.")
         max_turns = st.slider("Memory (last N exchanges sent)", 1, 20, 8,
                               help="Older messages are not sent to the model. This saves tokens and cost.")
+        stream = st.toggle("Stream replies word by word", value=False,
+                           help="Show the reply as it is generated. Off = wait for the full reply (more reliable).")
 
     st.subheader("📊 Usage & cost")
     t = ss.totals
@@ -205,12 +207,16 @@ if prompt and client:
 
         with st.chat_message("assistant"):
             usage = Usage()
+            params = dict(system=system_prompt or None, temperature=temperature,
+                          top_p=top_p, max_tokens=max_tokens, max_turns=max_turns)
             try:
-                reply = st.write_stream(client.stream_reply(
-                    ss.messages, system=system_prompt or None, temperature=temperature,
-                    top_p=top_p, max_tokens=max_tokens, max_turns=max_turns, usage=usage))
-                if not isinstance(reply, str):
-                    reply = "".join(map(str, reply))
+                with st.spinner("🤔 Thinking..."):
+                    if stream:
+                        reply = st.write_stream(client.stream_reply(ss.messages, usage=usage, **params))
+                        if not isinstance(reply, str):
+                            reply = "".join(map(str, reply))
+                    else:
+                        reply, usage = client.reply(ss.messages, **params)
                 if not reply.strip():
                     reply = "_(The model returned an empty reply. Try increasing **Max output tokens**.)_"
                 if "MAX_TOKENS" in usage.finish_reason:

@@ -31,6 +31,8 @@ MODELS = [
 # On the free tier you pay $0. Edit these to match ai.google.dev/pricing.
 DEFAULT_PRICES = {"input": 0.30, "output": 2.50}
 
+REQUEST_TIMEOUT_S = 60  # give up on a single request after this many seconds
+
 
 # --------------------------------------------------------------------------- #
 # 1. Authentication                                                           #
@@ -86,7 +88,10 @@ def _classify(e: Exception) -> LLMError:
         return LLMError(f"⚠️ The request was rejected (400): {text[:200]}")
     if code is not None and code >= 500:
         return LLMError("🛠️ Gemini servers are busy. Please try again.", retryable=True)
-    if any(w in text.lower() for w in ("timeout", "timed out", "connection")):
+    if "timeout" in type(e).__name__.lower() or "timed out" in text.lower() or "timeout" in text.lower():
+        return LLMError(f"⌛ Gemini didn't answer within {REQUEST_TIMEOUT_S}s. Try again, or pick a "
+                        "Flash-Lite model in the sidebar (faster).")
+    if "connect" in type(e).__name__.lower() or "connection" in text.lower():
         return LLMError("🌐 Network problem while contacting Gemini. Please try again.", retryable=True)
     return LLMError(f"Unexpected error: {text[:200]}")
 
@@ -157,7 +162,11 @@ class GeminiChat:
     def __init__(self, api_key: str | None, model: str = MODELS[0]):
         if not api_key:
             raise LLMError("🔑 No API key found. Add GEMINI_API_KEY to Streamlit secrets or a .env file.")
-        self.client = genai.Client(api_key=api_key)
+        # 60 s time limit per request; SDK's own retries disabled because we retry ourselves
+        # (hidden SDK retries can make the app look frozen for minutes).
+        self.client = genai.Client(api_key=api_key, http_options=types.HttpOptions(
+            timeout=REQUEST_TIMEOUT_S * 1000,
+            retry_options=types.HttpRetryOptions(attempts=1)))
         self.model = model
 
     def list_chat_models(self) -> list[str]:
@@ -216,6 +225,27 @@ class GeminiChat:
                 if started or not err.retryable or attempt == retries:
                     raise err from e
                 time.sleep(3 * (attempt + 1))  # simple back-off
+
+    def reply(self, history, system=None, temperature=1.0, top_p=0.95,
+              max_tokens=2048, max_turns=10, retries=2) -> tuple[str, Usage]:
+        """Non-streaming reply: wait for the full answer, then return (text, usage)."""
+        contents = to_contents(history, max_turns)
+        config = self._config(system, temperature, top_p, max_tokens)
+        usage = Usage()
+        for attempt in range(retries + 1):
+            t0 = time.time()
+            try:
+                resp = self.client.models.generate_content(model=self.model, contents=contents, config=config)
+                usage.record(resp.usage_metadata)
+                usage.latency_s = round(time.time() - t0, 2)
+                if resp.candidates and resp.candidates[0].finish_reason:
+                    usage.finish_reason = str(resp.candidates[0].finish_reason)
+                return resp.text or "", usage
+            except Exception as e:
+                err = friendly_error(e)
+                if not err.retryable or attempt == retries:
+                    raise err from e
+                time.sleep(3 * (attempt + 1))
 
     def summarize_chat(self, history, retries=2) -> tuple[ChatSummary, Usage]:
         """Structured response: returns a validated ChatSummary object (JSON under the hood)."""
