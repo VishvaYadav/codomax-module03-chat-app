@@ -3,7 +3,7 @@
 **Codomax Digital Solutions · Generative AI Internship · Module 03 (Day 11 – Day 15)**
 Intern: **Vishva Yadav** · B.E. Computer Engineering
 
-🌐 **Live app:** [your-app-link.streamlit.app](https://your-app-link.streamlit.app)
+🌐 **Live app:** [vishva-gemini-chat.streamlit.app](https://vishva-gemini-chat.streamlit.app)
 
 An AI chat web app built with **Python, Streamlit and the Google Gemini API**. It has streaming replies, conversation memory,
 custom instructions (personas), adjustable model parameters, token and cost tracking, structured JSON summaries, and
