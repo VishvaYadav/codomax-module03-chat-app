@@ -153,6 +153,22 @@ class GeminiChat:
         self.client = genai.Client(api_key=api_key)
         self.model = model
 
+    def list_chat_models(self) -> list[str]:
+        """Ask the API which text-chat models this key can use (Google renames models often).
+        Flash models first (best for the free tier), then Flash-Lite, then the rest."""
+        skip = ("image", "tts", "audio", "live", "embedding", "robotics", "computer-use", "veo", "imagen")
+        names = set()
+        for m in self.client.models.list():
+            name = (m.name or "").removeprefix("models/")
+            actions = getattr(m, "supported_actions", None) or []
+            if "generateContent" in actions and name.startswith("gemini") and not any(s in name for s in skip):
+                names.add(name)
+
+        def rank(n):
+            tier = 0 if ("flash" in n and "lite" not in n) else 1 if "flash-lite" in n else 2
+            return (tier, "preview" in n or "exp" in n, "latest" not in n, n)
+        return sorted(names, key=rank)
+
     @staticmethod
     def _config(system=None, temperature=1.0, top_p=0.95, max_tokens=2048, schema=None):
         cfg = {"temperature": temperature, "top_p": top_p, "max_output_tokens": max_tokens}

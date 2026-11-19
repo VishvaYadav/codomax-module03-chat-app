@@ -49,6 +49,15 @@ def get_client(api_key: str, model: str) -> GeminiChat:
     return GeminiChat(api_key, model)
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def available_models(api_key: str) -> list[str]:
+    """Models this key can actually use, fetched from the API (falls back to a fixed list)."""
+    try:
+        return GeminiChat(api_key).list_chat_models() or MODELS
+    except Exception:
+        return MODELS
+
+
 def add_usage(u: Usage):
     ss.totals["input"] += u.input_tokens
     ss.totals["output"] += u.output_tokens
@@ -64,7 +73,9 @@ with st.sidebar:
         api_key = st.text_input("Gemini API key", type="password",
                                 help="Free key from aistudio.google.com. Kept only in this browser session.")
 
-    model = st.selectbox("Model", MODELS, help="All of these work on the Gemini free tier.")
+    model_options = available_models(api_key) if api_key else MODELS
+    model = st.selectbox("Model", model_options,
+                         help="Fetched live from Google: models your key can use. Flash models are best on the free tier.")
 
     st.subheader("🧭 Custom instructions")
     persona = st.selectbox("Persona", list(PERSONAS))
