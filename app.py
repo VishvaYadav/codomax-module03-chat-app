@@ -11,7 +11,7 @@ from datetime import datetime
 import streamlit as st
 
 from llm_client import (DEFAULT_PRICES, MODELS, GeminiChat, LLMError, Usage,
-                        get_api_key)
+                        friendly_error, get_api_key)
 
 st.set_page_config(page_title="Gemini Chat · Codomax", page_icon="💬", layout="centered")
 
@@ -56,6 +56,15 @@ def available_models(api_key: str) -> list[str]:
         return GeminiChat(api_key).list_chat_models() or MODELS
     except Exception:
         return MODELS
+
+
+def show_error(e: Exception):
+    """Show a friendly message plus technical details (works for any exception type)."""
+    err = friendly_error(e)
+    st.error(err.user_message)
+    if getattr(err, "detail", ""):
+        with st.expander("Technical details"):
+            st.code(err.detail)
 
 
 def add_usage(u: Usage):
@@ -131,8 +140,8 @@ client = None
 if api_key:
     try:
         client = get_client(api_key, model)
-    except LLMError as e:
-        st.error(e.user_message)
+    except Exception as e:
+        show_error(e)
 else:
     st.info("👈 Add your free Gemini API key in the sidebar to start chatting.")
 
@@ -143,8 +152,8 @@ if summarize_clicked and client:
             summary, u = client.summarize_chat(ss.messages)
             add_usage(u)
             ss.summary = summary.model_dump()
-        except LLMError as e:
-            st.error(e.user_message)
+        except Exception as e:
+            show_error(e)
 
 if ss.summary:
     s = ss.summary
@@ -209,6 +218,6 @@ if prompt and client:
                 ss.messages.append({"role": "assistant", "content": reply, "usage": usage.to_dict()})
                 add_usage(usage)
                 st.rerun()
-            except LLMError as e:
+            except Exception as e:
                 ss.messages.pop()  # remove the unanswered user message so they can retry
-                st.error(e.user_message)
+                show_error(e)

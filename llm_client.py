@@ -58,15 +58,22 @@ def get_api_key() -> str | None:
 class LLMError(Exception):
     """An error with a message that is safe and helpful to show to users."""
 
-    def __init__(self, user_message: str, retryable: bool = False):
+    def __init__(self, user_message: str, retryable: bool = False, detail: str = ""):
         super().__init__(user_message)
         self.user_message = user_message
         self.retryable = retryable
+        self.detail = detail  # technical details for debugging
 
 
 def friendly_error(e: Exception) -> LLMError:
-    if isinstance(e, LLMError):
+    if isinstance(e, LLMError) or hasattr(e, "user_message"):
         return e
+    err = _classify(e)
+    err.detail = f"{type(e).__name__}: {str(e)[:500]}"
+    return err
+
+
+def _classify(e: Exception) -> LLMError:
     code = getattr(e, "code", None)
     text = str(e)
     if code == 429 or "RESOURCE_EXHAUSTED" in text:
